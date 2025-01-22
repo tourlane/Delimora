@@ -4,10 +4,13 @@ import os
 import threading
 from datetime import datetime
 import pandas as pd
-import openpyxl
+from main import update_csv_delimiter, is_csv_in_correct_format
 
 
 def list_csv_files(folder_path):
+    """
+    Lists all CSV files in the selected folder.
+    """
     try:
         files_in_folder = os.listdir(folder_path)
         csv_files = [file for file in files_in_folder if file.lower().endswith('.csv')]
@@ -16,39 +19,66 @@ def list_csv_files(folder_path):
         messagebox.showerror("Error", f"An error occurred while reading the folder: {e}")
         return []
 
-def load_file(window):
-    folder_path = filedialog.askdirectory()
-    if not folder_path:
-        messagebox.showwarning("Warning", "No folder selected!")
-        return
-    threading.Thread(target=process_csv_files, args=(folder_path, window)).start()
 
 def process_csv_files(folder_path, window):
+    """
+    Processes CSV files using update_csv_delimiter only if needed.
+    """
     try:
+        # List all CSV files in the folder
         csv_files = list_csv_files(folder_path)
-        window.after(0, update_log, csv_files, window)
-        window.after(0, messagebox.showinfo, "Success", f"CSV files in folder '{folder_path}' have been listed!")
+
+        # Filter files that are not in the correct format
+        files_to_update = [file for file in csv_files if not is_csv_in_correct_format(os.path.join(folder_path, file))]
+
+        if files_to_update:
+            # If there are files to update, process them
+            update_csv_delimiter(folder_path, files_to_update)
+            window.after(0, messagebox.showinfo, "Success", f"CSV files in folder '{folder_path}' have been updated!")
+        else:
+            window.after(0, messagebox.showinfo, "No Updates", "All CSV files are already in the correct format.")
+
+        # Update the log with the list of processed files
+        window.after(0, update_log, csv_files)
+
     except Exception as e:
         window.after(0, messagebox.showerror, "Error", f"An error occurred: {e}")
 
-def update_log(files, window):
+
+def update_log(files):
+    """
+    Updates the log text area with the list of processed CSV files.
+    """
     log_text.delete(1.0, tk.END)
     log_text.insert(tk.END, "Updated CSV Files:\n")
     for file in files:
         log_text.insert(tk.END, f"{file}\n")
 
 
+def load_file(window):
+    """
+    Opens a folder selection dialog and starts processing CSV files.
+    """
+    folder_path = filedialog.askdirectory(title="Select Folder for CSV Files")
+    if not folder_path:
+        messagebox.showwarning("Warning", "No folder selected!")
+        return
+
+    # Run the processing in a separate thread to keep the GUI responsive
+    threading.Thread(target=process_csv_files, args=(folder_path, window)).start()
+
+
 def save_log():
+    """
+    Saves the log of processed files to an Excel or CSV file.
+    """
     log_content = log_text.get(1.0, tk.END).strip().split("\n")
 
     if len(log_content) <= 1:
         messagebox.showwarning("Warning", "Log is empty or invalid!")
         return
 
-    if log_content[0].startswith("CSV Files in Folder:"):
-        log_data = log_content[1:]
-    else:
-        log_data = log_content
+    log_data = log_content[1:]  # Skip the header line
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     default_filename = f"delimora_log_{timestamp}"
@@ -62,16 +92,8 @@ def save_log():
     if file_path:
         try:
             if file_path.endswith(".xlsx"):
-                try:
-                    import openpyxl  # Check if openpyxl is installed
-                    df = pd.DataFrame(log_data, columns=["File Names"])
-                    df.to_excel(file_path, index=False)
-                except ImportError:
-                    messagebox.showerror(
-                        "Missing Library",
-                        "The 'openpyxl' library is required to save as Excel. Please install it using:\n\npip install openpyxl"
-                    )
-                    return
+                df = pd.DataFrame(log_data, columns=["File Names"])
+                df.to_excel(file_path, index=False)
             elif file_path.endswith(".csv"):
                 with open(file_path, "w", encoding="utf-8") as file:
                     file.write("File Names\n")
@@ -81,11 +103,15 @@ def save_log():
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred while saving the file: {e}")
 
+
 def create_gui():
+    """
+    Creates the main GUI application.
+    """
     global log_text
     window = tk.Tk()
     window.title("Gringotts - Delimora")
-    window.geometry("600x500")
+    window.geometry("900x500")
     window.configure(bg="#2C2F36")
 
     # Header Section with Sparkles
@@ -93,18 +119,15 @@ def create_gui():
     header_frame.grid(row=0, column=0, pady=(10, 5), padx=10, sticky="ew")
     header_frame.columnconfigure(0, weight=1)
 
-    # Sparkling Title
-    title_text = "✨ Delimora ✨"
     title_label = tk.Label(
         header_frame,
-        text=title_text,
+        text="✨ Delimora ✨",
         font=("Helvetica", 24, "bold"),
-        fg="#FFD700",  # Gold color for the text
+        fg="#FFD700",
         bg="#2C2F36",
     )
     title_label.grid(row=0, column=0, sticky="nsew")
 
-    # Subtitle
     subtitle_label = tk.Label(
         header_frame,
         text="A Magical Way to Manage CSV Files",
@@ -115,8 +138,8 @@ def create_gui():
     subtitle_label.grid(row=1, column=0, sticky="nsew", pady=(5, 0))
 
     # Log Section
-    log_text = tk.Text(window, height=15, wrap="word", font=("Courier New", 12), bg="#1A1D23", fg="white", bd=0)
-    log_text.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+    log_text = tk.Text(window, height=15, wrap="word", bg="#353C47", fg="white", font=("Courier", 12))
+    log_text.grid(row=1, column=0, pady=(5, 10), padx=10, sticky="nsew")
 
     # Buttons Section
     button_frame = tk.Frame(window, bg="#2C2F36")
@@ -124,8 +147,7 @@ def create_gui():
     button_frame.columnconfigure(0, weight=1)
     button_frame.columnconfigure(1, weight=1)
 
-    # Load Folder Button
-    load_button = tk.Button(
+    select_button = tk.Button(
         button_frame,
         text="🔄 Load Folder for CSVs",
         command=lambda: load_file(window),
@@ -136,10 +158,9 @@ def create_gui():
         padx=20,
         pady=10,
     )
-    load_button.grid(row=0, column=0, padx=5, sticky="ew")
+    select_button.grid(row=0, column=0, pady=5, sticky="ew")
 
-    # Download Log Button
-    download_button = tk.Button(
+    save_button = tk.Button(
         button_frame,
         text="💾 Download Log",
         command=save_log,
@@ -150,14 +171,15 @@ def create_gui():
         padx=20,
         pady=10,
     )
-    download_button.grid(row=0, column=1, padx=5, sticky="ew")
+    save_button.grid(row=0, column=1, pady=5, sticky="ew")
+
 
     # Allow resizing of the log text area
     window.grid_rowconfigure(1, weight=1)  # Log text expands vertically
     window.grid_columnconfigure(0, weight=1)  # Log text expands horizontally
 
-    # Start the GUI loop
     window.mainloop()
 
-# Run the GUI
+
+# Create the GUI
 create_gui()
